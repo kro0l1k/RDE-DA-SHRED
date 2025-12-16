@@ -1,1 +1,8 @@
 .venv/
+
+*.pt
+.png
+.jpg
+
+__pycache__/
+*.pyc
