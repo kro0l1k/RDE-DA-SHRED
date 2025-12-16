@@ -36,12 +36,12 @@ if __name__ == "__main__":
 
     # PDE parameters
     L = 32 * np.pi
-    N = 256
+    N = 100
     nu = 1.0
     mu_damping = 0.05  # Missing physics term
     dt = 0.02
-    T = 100.0
-    save_every = 3
+    T = 25.0
+    save_every = 1
 
     # SHRED/DA-SHRED parameters
     num_sensors = 15
