@@ -1,5 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -32,7 +31,7 @@ class KuramotoSivashinsky1D:
     Real physics: u_t + u*u_x + u_xx + nu*u_xxxx + mu*u = 0 (with damping)
     """
 
-    def __init__(self, L=32 * np.pi, N=256, nu=1.0, mu=0.0, dt=0.25):
+    def __init__(self, L=24 * np.pi, N=256, nu=1.0, mu=0.0, dt=0.25):
         self.L, self.N, self.nu, self.mu, self.dt = L, N, nu, mu, dt
         self.x = np.linspace(0, L, N, endpoint=False)
         self.k = (

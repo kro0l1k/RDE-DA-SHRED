@@ -1,15 +1,9 @@
 ### consider conditional diffusion models for generalizability to multi-front scenarios
-
+import warnings
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader
-from scipy.fft import fft, ifft
-from sklearn.preprocessing import MinMaxScaler
-import copy
-import warnings
+from torch.utils.data import DataLoader
 
 from DASHREDutils import *    
 
@@ -43,17 +37,18 @@ if __name__ == "__main__":
     save_every = 1
 
     # SHRED/DA-SHRED parameters
-    num_sensors = 15
+    num_sensors = 25
     lags = 25
-    hidden_size = 10
-    decoder_layers = [128, 128]
+    num_lstm_layers = 3
+    hidden_size = 5
+    decoder_layers = [128, 128, 128]
 
     # Training parameters
     shred_epochs = 550
     shred_patience = 100
-    dashred_epochs = 450
+    dashred_epochs = 650
     dashred_patience = 100
-    gan_epochs = 200
+    gan_epochs = 300
     smoothness_weight = 0.0  # Weight for smoothness regularization (try 0.0 to 0.2)
 
     # SINDy refinement parameters
@@ -135,7 +130,7 @@ if __name__ == "__main__":
         lags=lags,
         hidden_size=hidden_size,
         output_size=N,
-        num_lstm_layers=3,
+        num_lstm_layers=num_lstm_layers,
         decoder_layers=decoder_layers,
         dropout=0.15,
     )
