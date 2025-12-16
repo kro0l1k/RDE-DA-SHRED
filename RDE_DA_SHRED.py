@@ -49,12 +49,12 @@ if __name__ == "__main__":
     decoder_layers = [128, 128]
 
     # Training parameters
-    shred_epochs = 250
+    shred_epochs = 550
     shred_patience = 100
-    dashred_epochs = 150
+    dashred_epochs = 450
     dashred_patience = 100
-    gan_epochs = 100
-    smoothness_weight = 0.05  # Weight for smoothness regularization (try 0.0 to 0.2)
+    gan_epochs = 200
+    smoothness_weight = 0.0  # Weight for smoothness regularization (try 0.0 to 0.2)
 
     # SINDy refinement parameters
     sindy_initial_threshold = 0.01
@@ -137,7 +137,7 @@ if __name__ == "__main__":
         output_size=N,
         num_lstm_layers=3,
         decoder_layers=decoder_layers,
-        dropout=0.1,
+        dropout=0.15,
     )
     print(f"    Model parameters: {sum(p.numel() for p in shred_model.parameters()):,}")
 
