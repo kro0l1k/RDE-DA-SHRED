@@ -11,10 +11,16 @@ from sklearn.preprocessing import MinMaxScaler
 import copy
 import warnings
 
-warnings.filterwarnings('ignore')
+warnings.filterwarnings("ignore")
 
 # Set device
-device = torch.device('mps' if torch.backends.mps.is_available() else 'cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device(
+    "mps"
+    if torch.backends.mps.is_available()
+    else "cuda"
+    if torch.cuda.is_available()
+    else "cpu"
+)
 print(f"Using device: {device}")
 
 # Set random seeds
@@ -36,8 +42,13 @@ class KuramotoSivashinsky1D:
     def __init__(self, L=32 * np.pi, N=256, nu=1.0, mu=0.0, dt=0.25):
         self.L, self.N, self.nu, self.mu, self.dt = L, N, nu, mu, dt
         self.x = np.linspace(0, L, N, endpoint=False)
-        self.k = 2 * np.pi / L * np.concatenate([np.arange(0, N // 2), np.arange(-N // 2, 0)])
-        self.linear_op = self.k ** 2 - nu * self.k ** 4 - mu
+        self.k = (
+            2
+            * np.pi
+            / L
+            * np.concatenate([np.arange(0, N // 2), np.arange(-N // 2, 0)])
+        )
+        self.linear_op = self.k**2 - nu * self.k**4 - mu
         self._compute_etdrk4_coefficients()
 
     def _compute_etdrk4_coefficients(self):
@@ -50,13 +61,19 @@ class KuramotoSivashinsky1D:
         LR = h * L[:, np.newaxis] + r[np.newaxis, :]
 
         self.Q = h * np.real(np.mean((np.exp(LR / 2) - 1) / LR, axis=1))
-        self.f1 = h * np.real(np.mean((-4 - LR + np.exp(LR) * (4 - 3 * LR + LR ** 2)) / LR ** 3, axis=1))
-        self.f2 = h * np.real(np.mean((2 + LR + np.exp(LR) * (-2 + LR)) / LR ** 3, axis=1))
-        self.f3 = h * np.real(np.mean((-4 - 3 * LR - LR ** 2 + np.exp(LR) * (4 - LR)) / LR ** 3, axis=1))
+        self.f1 = h * np.real(
+            np.mean((-4 - LR + np.exp(LR) * (4 - 3 * LR + LR**2)) / LR**3, axis=1)
+        )
+        self.f2 = h * np.real(
+            np.mean((2 + LR + np.exp(LR) * (-2 + LR)) / LR**3, axis=1)
+        )
+        self.f3 = h * np.real(
+            np.mean((-4 - 3 * LR - LR**2 + np.exp(LR) * (4 - LR)) / LR**3, axis=1)
+        )
 
     def _nonlinear(self, u_hat):
         u = np.real(ifft(u_hat))
-        return -0.5j * self.k * fft(u ** 2)
+        return -0.5j * self.k * fft(u**2)
 
     def step(self, u_hat):
         Nu = self._nonlinear(u_hat)
@@ -84,6 +101,7 @@ class KuramotoSivashinsky1D:
 
 
 # 2. Dataset for SHRED
+
 
 class TimeSeriesDataset(Dataset):
     """Dataset with time-lagged sensor measurements for SHRED"""
@@ -114,14 +132,15 @@ class TimeSeriesDataset(Dataset):
 
     def __getitem__(self, idx):
         t = self.valid_indices[idx]
-        sensor_history = self.S_scaled[t - self.lags:t]
+        sensor_history = self.S_scaled[t - self.lags : t]
         full_state = self.U_scaled[t]
-        return (torch.tensor(sensor_history, dtype=torch.float32),
-                torch.tensor(full_state, dtype=torch.float32))
+        return (
+            torch.tensor(sensor_history, dtype=torch.float32),
+            torch.tensor(full_state, dtype=torch.float32),
+        )
 
     def get_scalers(self):
         return (self.scaler_U, self.scaler_S)
-
 
 
 # 3. SHRED Model
@@ -130,8 +149,16 @@ class TimeSeriesDataset(Dataset):
 class SHRED(nn.Module):
     """SHallow REcurrent Decoder: LSTM encoder -> latent -> MLP decoder"""
 
-    def __init__(self, num_sensors, lags, hidden_size, output_size,
-                 num_lstm_layers=3, decoder_layers=[256, 256], dropout=0.1):
+    def __init__(
+        self,
+        num_sensors,
+        lags,
+        hidden_size,
+        output_size,
+        num_lstm_layers=3,
+        decoder_layers=[256, 256],
+        dropout=0.1,
+    ):
         super().__init__()
         self.hidden_size = hidden_size
 
@@ -140,14 +167,20 @@ class SHRED(nn.Module):
             hidden_size=hidden_size,
             num_layers=num_lstm_layers,
             batch_first=True,
-            dropout=dropout if num_lstm_layers > 1 else 0
+            dropout=dropout if num_lstm_layers > 1 else 0,
         )
 
         layers = []
         prev = hidden_size
         for size in decoder_layers:
-            layers.extend([nn.Linear(prev, size), nn.LayerNorm(size),
-                           nn.ReLU(), nn.Dropout(dropout)])
+            layers.extend(
+                [
+                    nn.Linear(prev, size),
+                    nn.LayerNorm(size),
+                    nn.ReLU(),
+                    nn.Dropout(dropout),
+                ]
+            )
             prev = size
         layers.append(nn.Linear(prev, output_size))
         self.decoder = nn.Sequential(*layers)
@@ -177,9 +210,9 @@ class DASHRED(nn.Module):
         self.transform = nn.Sequential(
             nn.Linear(self.hidden_size, self.hidden_size),
             nn.Tanh(),
-            nn.Linear(self.hidden_size, self.hidden_size)
+            nn.Linear(self.hidden_size, self.hidden_size),
         )
-
+        # NOTE: there are probably buiild in ways to initialize near identity
         # Initialize transformation near identity for subtle initial correction
         with torch.no_grad():
             self.transform[0].weight.copy_(0.1 * torch.eye(self.hidden_size))
@@ -213,7 +246,9 @@ class LatentGANAligner(nn.Module):
         gen_modules = []
         prev_size = latent_dim
         for size in hidden_layers:
-            gen_modules.extend([nn.Linear(prev_size, size), nn.LeakyReLU(0.2), nn.Dropout(dropout)])
+            gen_modules.extend(
+                [nn.Linear(prev_size, size), nn.LeakyReLU(0.2), nn.Dropout(dropout)]
+            )
             prev_size = size
         gen_modules.append(nn.Linear(prev_size, latent_dim))
         self.generator = nn.Sequential(*gen_modules)
@@ -222,7 +257,9 @@ class LatentGANAligner(nn.Module):
         disc_modules = []
         prev_size = latent_dim
         for size in hidden_layers:
-            disc_modules.extend([nn.Linear(prev_size, size), nn.LeakyReLU(0.2), nn.Dropout(dropout)])
+            disc_modules.extend(
+                [nn.Linear(prev_size, size), nn.LeakyReLU(0.2), nn.Dropout(dropout)]
+            )
             prev_size = size
         disc_modules.append(nn.Linear(prev_size, 1))
         self.discriminator = nn.Sequential(*disc_modules)
@@ -234,16 +271,27 @@ class LatentGANAligner(nn.Module):
 # 5. Training Functions
 
 
-def train_latent_gan_aligner(aligner, Z_sim, Z_real, num_epochs=200, batch_size=32, lr=1e-4):
+def train_latent_gan_aligner(
+    aligner, Z_sim, Z_real, num_epochs=200, batch_size=32, lr=1e-4
+):
     """Train GAN to align sim to real latents with adversarial and cycle loss"""
 
-    sim_dataset = torch.utils.data.TensorDataset(torch.tensor(Z_sim, dtype=torch.float32))
-    real_dataset = torch.utils.data.TensorDataset(torch.tensor(Z_real, dtype=torch.float32))
-    sim_loader = torch.utils.data.DataLoader(sim_dataset, batch_size=batch_size, shuffle=True)
-    real_loader = torch.utils.data.DataLoader(real_dataset, batch_size=batch_size, shuffle=True)
+    sim_dataset = torch.utils.data.TensorDataset(
+        torch.tensor(Z_sim, dtype=torch.float32)
+    )
+    real_dataset = torch.utils.data.TensorDataset(
+        torch.tensor(Z_real, dtype=torch.float32)
+    )
+    sim_loader = torch.utils.data.DataLoader(
+        sim_dataset, batch_size=batch_size, shuffle=True
+    )
+    real_loader = torch.utils.data.DataLoader(
+        real_dataset, batch_size=batch_size, shuffle=True
+    )
 
     criterion_adv = nn.BCEWithLogitsLoss()
     criterion_cycle = nn.L1Loss()
+
     opt_gen = optim.Adam(aligner.generator.parameters(), lr=lr, betas=(0.5, 0.999))
     opt_disc = optim.Adam(aligner.discriminator.parameters(), lr=lr, betas=(0.5, 0.999))
 
@@ -252,15 +300,20 @@ def train_latent_gan_aligner(aligner, Z_sim, Z_real, num_epochs=200, batch_size=
         aligner.train()
         gen_loss_total, disc_loss_total = 0.0, 0.0
         for (z_sim,), (z_real,) in zip(sim_loader, real_loader):
-            z_sim, z_real = z_sim[0].to(device), z_real[0].to(device)
+            #             z_sim, z_real = z_sim[0].to(device), z_real[0].to(device)
+            z_sim, z_real = (
+                z_sim.to(device),
+                z_real.to(device),
+            )  # NOTE: we were not using the whole batch?
 
             # Train Discriminator
             opt_disc.zero_grad()
             fake = aligner(z_sim)
             disc_real = aligner.discriminator(z_real)
             disc_fake = aligner.discriminator(fake.detach())
-            loss_disc = criterion_adv(disc_real, torch.ones_like(disc_real)) + \
-                        criterion_adv(disc_fake, torch.zeros_like(disc_fake))
+            loss_disc = criterion_adv(
+                disc_real, torch.ones_like(disc_real)
+            ) + criterion_adv(disc_fake, torch.zeros_like(disc_fake))
             loss_disc.backward()
             opt_disc.step()
             disc_loss_total += loss_disc.item()
@@ -272,17 +325,21 @@ def train_latent_gan_aligner(aligner, Z_sim, Z_real, num_epochs=200, batch_size=
             loss_adv = criterion_adv(disc_fake, torch.ones_like(disc_fake))
             loss_cycle = criterion_cycle(aligner.generator(fake), z_sim)
             loss_gen = loss_adv + 10.0 * loss_cycle
+
             loss_gen.backward()
             opt_gen.step()
             gen_loss_total += loss_gen.item()
 
         if (epoch + 1) % 20 == 0:
             print(
-                f"Epoch {epoch + 1}/{num_epochs}, Gen Loss: {gen_loss_total / len(sim_loader):.6f}, Disc Loss: {disc_loss_total / len(sim_loader):.6f}")
+                f"Epoch {epoch + 1}/{num_epochs}, Gen Loss: {gen_loss_total / len(sim_loader):.6f}, Disc Loss: {disc_loss_total / len(sim_loader):.6f}"
+            )
     return aligner
 
 
-def train_shred(model, train_data, valid_data, epochs=150, batch_size=32, lr=1e-3, patience=20):
+def train_shred(
+    model, train_data, valid_data, epochs=150, batch_size=32, lr=1e-3, patience=20
+):
     """Train SHRED model"""
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
     valid_loader = DataLoader(valid_data, batch_size=batch_size)
@@ -292,7 +349,7 @@ def train_shred(model, train_data, valid_data, epochs=150, batch_size=32, lr=1e-
     criterion = nn.MSELoss()
 
     model.to(device)
-    best_loss, best_state, wait = float('inf'), None, 0
+    best_loss, best_state, wait = float("inf"), None, 0
     train_hist, valid_hist = [], []
 
     for epoch in range(epochs):
@@ -333,19 +390,32 @@ def train_shred(model, train_data, valid_data, epochs=150, batch_size=32, lr=1e-
                 break
 
         if (epoch + 1) % 25 == 0:
-            print(f"  Epoch {epoch + 1}/{epochs}, Train: {train_loss:.6f}, Valid: {valid_loss:.6f}")
+            print(
+                f"  Epoch {epoch + 1}/{epochs}, Train: {train_loss:.6f}, Valid: {valid_loss:.6f}"
+            )
 
     if best_state:
         model.load_state_dict(best_state)
     return train_hist, valid_hist
 
 
-def train_dashred(model, train_dataset_real, valid_dataset_real, sensor_indices,
-                  shred_model, train_sim, train_real,
-                  epochs=100, batch_size=32, lr=5e-4, patience=20, gan_epochs=50,
-                  smoothness_weight=0.1):
+def train_dashred(
+    model: DASHRED,
+    train_dataset_real,
+    valid_dataset_real,
+    sensor_indices,
+    shred_model,
+    train_sim,
+    train_real,
+    epochs=100,
+    batch_size=32,
+    lr=5e-4,
+    patience=20,
+    gan_epochs=50,
+    smoothness_weight=0.1,
+):
     """Train DA-SHRED with GAN-based latent alignment for sim2real matching"""
-    model.to(device) # NOTE: this was missing from the tutorial
+    model.to(device)  # NOTE: this was missing from the tutorial
     # First, extract latents from sim (using SHRED) and real (using current model)
     Z_sim = get_latent_trajectory(shred_model, train_sim)
     Z_real = get_latent_trajectory(model, train_real, is_dashred=True)
@@ -354,10 +424,11 @@ def train_dashred(model, train_dataset_real, valid_dataset_real, sensor_indices,
     latent_dim = model.hidden_size
     aligner = LatentGANAligner(latent_dim=latent_dim)
     print("Training GAN for latent space alignment...")
-    aligner = train_latent_gan_aligner(aligner, Z_sim, Z_real, num_epochs=gan_epochs, batch_size=batch_size,
-                                       lr=lr / 2)
+    aligner = train_latent_gan_aligner(
+        aligner, Z_sim, Z_real, num_epochs=gan_epochs, batch_size=batch_size, lr=lr / 2
+    )
 
-    # Integrate trained GAN generator into model's transformation
+    # Integrate trained GAN generator into model's transformation # NOTE: in the future define a class for Latent_Transform which desscibes the init for both classes
     model.latent_transform = aligner.generator
 
     # Now fine-tune the full model with reconstruction loss (using aligned latents)
@@ -367,7 +438,7 @@ def train_dashred(model, train_dataset_real, valid_dataset_real, sensor_indices,
     optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-5)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=10)
 
-    best_loss, best_state, wait = float('inf'), None, 0
+    best_loss, best_state, wait = float("inf"), None, 0
     train_hist, valid_hist = [], []
 
     model.to(device)
@@ -381,18 +452,22 @@ def train_dashred(model, train_dataset_real, valid_dataset_real, sensor_indices,
             pred, latent, latent_t = model(sensors, apply_transform=True)
 
             recon = nn.functional.mse_loss(pred, state)
-            sensor = nn.functional.mse_loss(pred[:, sensor_indices], state[:, sensor_indices])
+            sensor = nn.functional.mse_loss(
+                pred[:, sensor_indices], state[:, sensor_indices]
+            )
             reg = torch.mean((latent_t - latent) ** 2)
 
             # Smoothness regularization: penalize large gradients in reconstruction
             # This encourages smoother outputs
             if smoothness_weight > 0:
                 pred_grad = pred[:, 1:] - pred[:, :-1]  # Approximate spatial gradient
-                smoothness_loss = torch.mean(pred_grad ** 2)
+                smoothness_loss = torch.mean(pred_grad**2)
             else:
                 smoothness_loss = 0.0
 
-            loss = recon + 0.5 * sensor + 0.01 * reg + smoothness_weight * smoothness_loss
+            loss = (
+                recon + 0.5 * sensor + 0.01 * reg + smoothness_weight * smoothness_loss
+            )
 
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -407,8 +482,10 @@ def train_dashred(model, train_dataset_real, valid_dataset_real, sensor_indices,
         with torch.no_grad():
             for sensors, state in valid_loader:
                 sensors, state = sensors.to(device), state.to(device)
-                pred, _, _ = model(sensors)
-                valid_loss += nn.functional.mse_loss(pred, state).item() * sensors.size(0)
+                pred, _, _ = model(sensors, apply_transform=True)
+                valid_loss += nn.functional.mse_loss(pred, state).item() * sensors.size(
+                    0
+                )
         valid_loss /= len(valid_dataset_real)
         valid_hist.append(valid_loss)
 
@@ -425,7 +502,9 @@ def train_dashred(model, train_dataset_real, valid_dataset_real, sensor_indices,
                 break
 
         if (epoch + 1) % 20 == 0:
-            print(f"Epoch {epoch + 1}/{epochs}, Train: {train_loss:.6f}, Valid: {valid_loss:.6f}")
+            print(
+                f"Epoch {epoch + 1}/{epochs}, Train: {train_loss:.6f}, Valid: {valid_loss:.6f}"
+            )
 
     if best_state:
         model.load_state_dict(best_state)
@@ -433,6 +512,7 @@ def train_dashred(model, train_dataset_real, valid_dataset_real, sensor_indices,
 
 
 # 6. Evaluation
+
 
 def evaluate(model, dataset, scaler_U, is_dashred=False):
     """Evaluate model and return predictions"""
@@ -468,7 +548,9 @@ def get_latent_trajectory(model, dataset, is_dashred=False):
                 _, _, latent = model(sensors)
             else:
                 _, latent = model(sensors)
-            return latent.cpu().numpy()
+            # NOTE: should be tensors on device
+
+            return latent
 
 
 # 7. SINDy for Missing Physics Discovery
@@ -478,17 +560,17 @@ def build_sindy_library(Z, poly_order=2):
     """Build polynomial library for SINDy"""
     n_samples, dim = Z.shape
     library = [np.ones(n_samples)]
-    names = ['1']
+    names = ["1"]
 
     for i in range(dim):
         library.append(Z[:, i])
-        names.append(f'z{i}')
+        names.append(f"z{i}")
 
     if poly_order >= 2:
         for i in range(dim):
             for j in range(i, dim):
                 library.append(Z[:, i] * Z[:, j])
-                names.append(f'z{i}*z{j}')
+                names.append(f"z{i}*z{j}")
 
     return np.column_stack(library), names
 
@@ -503,7 +585,9 @@ def sindy_stls(Theta, dZ, threshold=0.01, max_iter=50):
         for i in range(dZ.shape[1]):
             big_inds = ~small_inds[:, i]
             if np.sum(big_inds) > 0:
-                Xi[big_inds, i] = np.linalg.lstsq(Theta[:, big_inds], dZ[:, i], rcond=None)[0]
+                Xi[big_inds, i] = np.linalg.lstsq(
+                    Theta[:, big_inds], dZ[:, i], rcond=None
+                )[0]
     return Xi
 
 
@@ -526,34 +610,44 @@ def compute_spectral_derivatives(u, L, max_order=4):
     # Wavenumbers for spectral differentiation
     k = 2 * np.pi / L * np.concatenate([np.arange(0, N // 2), np.arange(-N // 2, 0)])
 
-    derivatives = {'u': u}
+    derivatives = {"u": u}
 
     # Transform to Fourier space
     u_hat = fft(u, axis=1)
 
     if max_order >= 1:
         u_x_hat = 1j * k * u_hat
-        derivatives['u_x'] = np.real(ifft(u_x_hat, axis=1))
+        derivatives["u_x"] = np.real(ifft(u_x_hat, axis=1))
 
     if max_order >= 2:
         u_xx_hat = (1j * k) ** 2 * u_hat
-        derivatives['u_xx'] = np.real(ifft(u_xx_hat, axis=1))
+        derivatives["u_xx"] = np.real(ifft(u_xx_hat, axis=1))
 
     if max_order >= 3:
         u_xxx_hat = (1j * k) ** 3 * u_hat
-        derivatives['u_xxx'] = np.real(ifft(u_xxx_hat, axis=1))
+        derivatives["u_xxx"] = np.real(ifft(u_xxx_hat, axis=1))
 
     if max_order >= 4:
         u_xxxx_hat = (1j * k) ** 4 * u_hat
-        derivatives['u_xxxx'] = np.real(ifft(u_xxxx_hat, axis=1))
+        derivatives["u_xxxx"] = np.real(ifft(u_xxxx_hat, axis=1))
 
     return derivatives
 
 
-def identify_missing_damping(shred_model, dashred_model, train_dataset_sim, train_dataset_real,
-                             x, L, dt, save_every,
-                             initial_threshold=0.01, max_iter=50, refinement_steps=8,
-                             threshold_increment=0.04):
+def identify_missing_damping(
+    shred_model,
+    dashred_model,
+    train_dataset_sim,
+    train_dataset_real,
+    x,
+    L,
+    dt,
+    save_every,
+    initial_threshold=0.01,
+    max_iter=50,
+    refinement_steps=8,
+    threshold_increment=0.04,
+):
     """
     Identify missing physics using extended SINDy library with proper spatial derivatives
 
@@ -578,11 +672,15 @@ def identify_missing_damping(shred_model, dashred_model, train_dataset_sim, trai
 
     # Compute latent difference (proxy for missing physics effect)
     latent_diff = Z_real - Z_sim
-
+    latent_diff = latent_diff.cpu().numpy()
     # Reconstruct u from sim latents to build physical library (shape: M, N)
     shred_model.eval()
     with torch.no_grad():
-        u_recon = shred_model.decoder(torch.tensor(Z_sim, dtype=torch.float32).to(device)).cpu().numpy()
+        u_recon = (
+            shred_model.decoder(torch.tensor(Z_sim, dtype=torch.float32).to(device))
+            .cpu()
+            .numpy()
+        )
 
     # Compute spatial derivatives using spectral method
     derivs = compute_spectral_derivatives(u_recon, L, max_order=4)
@@ -602,31 +700,31 @@ def identify_missing_damping(shred_model, dashred_model, train_dataset_sim, trai
     names = []
 
     library_terms.append(np.ones_like(u_mid))
-    names.append('1')
+    names.append("1")
 
-    library_terms.append(derivs['u'])
-    names.append('u')
+    library_terms.append(derivs["u"])
+    names.append("u")
 
-    library_terms.append(derivs['u'] ** 2)
-    names.append('u^2')
+    library_terms.append(derivs["u"] ** 2)
+    names.append("u^2")
 
-    library_terms.append(derivs['u'] ** 3)
-    names.append('u^3')
+    library_terms.append(derivs["u"] ** 3)
+    names.append("u^3")
 
-    library_terms.append(derivs['u_x'])
-    names.append('u_x')
+    library_terms.append(derivs["u_x"])
+    names.append("u_x")
 
-    library_terms.append(derivs['u_xx'])
-    names.append('u_xx')
+    library_terms.append(derivs["u_xx"])
+    names.append("u_xx")
 
-    library_terms.append(derivs['u_xxxx'])
-    names.append('u_xxxx')
+    library_terms.append(derivs["u_xxxx"])
+    names.append("u_xxxx")
 
-    library_terms.append(derivs['u'] * derivs['u_x'])
-    names.append('u*u_x')
+    library_terms.append(derivs["u"] * derivs["u_x"])
+    names.append("u*u_x")
 
     library_terms.append(u_t)
-    names.append('u_t')
+    names.append("u_t")
 
     print(f"    Extended SINDy library features: {names}")
 
@@ -639,22 +737,27 @@ def identify_missing_damping(shred_model, dashred_model, train_dataset_sim, trai
     latent_diff_flat = latent_diff_repeated.reshape(-1, latent_diff_mid.shape[1])
 
     # SINDy regression
-    Xi = sindy_stls(library, latent_diff_flat, threshold=initial_threshold, max_iter=max_iter)
+    Xi = sindy_stls(
+        library, latent_diff_flat, threshold=initial_threshold, max_iter=max_iter
+    )
 
     # Extract average coefficient for 'u' across latent dims
-    u_index = names.index('u')
+    u_index = names.index("u")
     extracted_mu = np.mean(Xi[u_index, :])
 
     # Refinement loop with sequential thresholding
     current_threshold = initial_threshold
     for step in range(refinement_steps):
-        Xi = sindy_stls(library, latent_diff_flat, threshold=current_threshold, max_iter=max_iter)
+        Xi = sindy_stls(
+            library, latent_diff_flat, threshold=current_threshold, max_iter=max_iter
+        )
         extracted_mu = np.mean(Xi[u_index, :])
 
         non_zero_per_dim = np.sum(np.abs(Xi) > 0.001, axis=0)
         avg_non_zero = np.mean(non_zero_per_dim)
         print(
-            f"Refinement step {step + 1}, threshold={current_threshold:.4f}, extracted μ={extracted_mu:.4f}, avg non-zero terms: {avg_non_zero:.1f}")
+            f"Refinement step {step + 1}, threshold={current_threshold:.4f}, extracted μ={extracted_mu:.4f}, avg non-zero terms: {avg_non_zero:.1f}"
+        )
 
         if abs(extracted_mu - 0.05) < 0.001 and avg_non_zero <= 2:
             break
@@ -723,16 +826,15 @@ def gaussian_smooth(u, sigma=1.0):
     u_smooth: ndarray - Smoothed field
     """
     from scipy.ndimage import gaussian_filter1d
-    u_smooth = gaussian_filter1d(u, sigma=sigma, axis=1, mode='wrap')
+
+    u_smooth = gaussian_filter1d(u, sigma=sigma, axis=1, mode="wrap")
     return u_smooth
 
 
 # 9. Main Execution
 
 if __name__ == "__main__":
-
     # HYPERPARAMETERS - Easy to tune
-
 
     # PDE parameters
     L = 32 * np.pi
@@ -741,39 +843,46 @@ if __name__ == "__main__":
     mu_damping = 0.05  # Missing physics term
     dt = 0.02
     T = 100.0
-    save_every = 4
+    save_every = 3
 
     # SHRED/DA-SHRED parameters
-    num_sensors = 12
-    lags = 30
-    hidden_size = 8
+    num_sensors = 15
+    lags = 25
+    hidden_size = 10
     decoder_layers = [128, 128]
 
     # Training parameters
-    shred_epochs = 150
+    shred_epochs = 250
     shred_patience = 100
-    dashred_epochs = 100
+    dashred_epochs = 150
     dashred_patience = 100
-    gan_epochs = 50
+    gan_epochs = 100
     smoothness_weight = 0.05  # Weight for smoothness regularization (try 0.0 to 0.2)
 
     # SINDy refinement parameters
     sindy_initial_threshold = 0.01
     sindy_max_iter = 50
     sindy_refinement_steps = 8
-    sindy_threshold_increment = 0.04  # How much to increase in threshold on each refinement step
+    sindy_threshold_increment = (
+        0.04  # How much to increase in threshold on each refinement step
+    )
 
     # Post-processing smoothing (optional)
     apply_smoothing = False  # Set to True to apply spectral smoothing
-    smoothing_cutoff = 0.7  # Fraction of Fourier modes to keep (higher = less smoothing)
-
+    smoothing_cutoff = (
+        0.7  # Fraction of Fourier modes to keep (higher = less smoothing)
+    )
 
     # Main execution
 
-
     # Generate initial condition
     x = np.linspace(0, L, N, endpoint=False)
-    u0 = np.cos(x / 16) * (1 + np.sin(x / 16))
+
+    init_seeds = [16, 17, 18, 19, 20]
+    u0_s = []
+    for init_seed in init_seeds:
+        u0 = np.cos(x / init_seed) * (1 + np.sin(x / init_seed))
+        u0_s.append(u0)
 
     # Generate data
     print("\n[1] Generating PDE data...")
@@ -782,21 +891,35 @@ if __name__ == "__main__":
 
     ks_sim = KuramotoSivashinsky1D(L=L, N=N, nu=nu, mu=0.0, dt=dt)
     ks_real = KuramotoSivashinsky1D(L=L, N=N, nu=nu, mu=mu_damping, dt=dt)
+    U_sim_list = []
+    U_real_list = []
 
-    U_sim = ks_sim.simulate(u0, T, save_every)
-    U_real = ks_real.simulate(u0, T, save_every)
+    for u0 in u0_s:
+        U_sim_single = ks_sim.simulate(u0, T, save_every)  # shape: (nt, N)
+        U_real_single = ks_real.simulate(u0, T, save_every)  # shape: (nt, N)
 
+        U_sim_list.append(U_sim_single)
+        U_real_list.append(U_real_single)
+
+    U_sim = np.vstack(U_sim_list)
+    U_real = np.vstack(U_real_list)
     # Plot KS heatmap
     t_sim = np.arange(0, T + dt, dt * save_every)
     fig, ax = plt.subplots(figsize=(10, 6))
-    im = ax.imshow(U_sim.T, aspect='auto', cmap='RdBu_r',
-                   extent=[t_sim[0], t_sim[-1], 0, L], origin='lower', interpolation='bilinear')
-    ax.set_xlabel('Time (t)')
-    ax.set_ylabel('Space (x)')
-    ax.set_title('1D Kuramoto-Sivashinsky Heatmap (Undamped Simulation)')
-    plt.colorbar(im, ax=ax, label='u value')
+    im = ax.imshow(
+        U_sim.T,
+        aspect="auto",
+        cmap="RdBu_r",
+        extent=[t_sim[0], t_sim[-1], 0, L],
+        origin="lower",
+        interpolation="bilinear",
+    )
+    ax.set_xlabel("Time (t)")
+    ax.set_ylabel("Space (x)")
+    ax.set_title("1D Kuramoto-Sivashinsky Heatmap (Undamped Simulation)")
+    plt.colorbar(im, ax=ax, label="u value")
     plt.tight_layout()
-    plt.savefig('ks_heatmap.png', dpi=150, bbox_inches='tight')
+    plt.savefig("ks_heatmap.png", dpi=150, bbox_inches="tight")
     plt.show()
 
     print(f"    Data shape: {U_sim.shape} (timesteps x spatial points)")
@@ -809,13 +932,18 @@ if __name__ == "__main__":
 
     n_train = int(0.8 * len(U_sim))
 
-    train_sim = TimeSeriesDataset(U_sim[:n_train], sensor_indices, lags, fit_scaler=True)
-    valid_sim = TimeSeriesDataset(U_sim[n_train:], sensor_indices, lags,
-                                  scaler=train_sim.get_scalers())
-    train_real = TimeSeriesDataset(U_real[:n_train], sensor_indices, lags,
-                                   scaler=train_sim.get_scalers())
-    valid_real = TimeSeriesDataset(U_real[n_train:], sensor_indices, lags,
-                                   scaler=train_sim.get_scalers())
+    train_sim = TimeSeriesDataset(
+        U_sim[:n_train], sensor_indices, lags, fit_scaler=True
+    )
+    valid_sim = TimeSeriesDataset(
+        U_sim[n_train:], sensor_indices, lags, scaler=train_sim.get_scalers()
+    )
+    train_real = TimeSeriesDataset(
+        U_real[:n_train], sensor_indices, lags, scaler=train_sim.get_scalers()
+    )
+    valid_real = TimeSeriesDataset(
+        U_real[n_train:], sensor_indices, lags, scaler=train_sim.get_scalers()
+    )
 
     print(f"    Training samples: {len(train_sim)}")
     print(f"    Validation samples: {len(valid_sim)}")
@@ -823,12 +951,19 @@ if __name__ == "__main__":
     # Initialize and train SHRED
     print("\n[3] Training SHRED on simulation data...")
     shred_model = SHRED(
-        num_sensors=num_sensors, lags=lags, hidden_size=hidden_size,
-        output_size=N, num_lstm_layers=3, decoder_layers=decoder_layers, dropout=0.1
+        num_sensors=num_sensors,
+        lags=lags,
+        hidden_size=hidden_size,
+        output_size=N,
+        num_lstm_layers=3,
+        decoder_layers=decoder_layers,
+        dropout=0.1,
     )
     print(f"    Model parameters: {sum(p.numel() for p in shred_model.parameters()):,}")
 
-    train_shred(shred_model, train_sim, valid_sim, epochs=shred_epochs, patience=shred_patience)
+    train_shred(
+        shred_model, train_sim, valid_sim, epochs=shred_epochs, patience=shred_patience
+    )
 
     # Evaluate SIM2REAL gap
     print("\n[4] Evaluating SIM2REAL gap...")
@@ -845,16 +980,25 @@ if __name__ == "__main__":
 
     print("\n[5] Training DA-SHRED to close SIM2REAL gap...")
     train_hist_da, valid_hist_da = train_dashred(
-        dashred_model, train_real, valid_real, sensor_indices,
-        shred_model=shred_model, train_sim=train_sim, train_real=train_real,
-        epochs=dashred_epochs, patience=dashred_patience, gan_epochs=gan_epochs,
-        smoothness_weight=smoothness_weight
+        dashred_model,
+        train_real,
+        valid_real,
+        sensor_indices,
+        shred_model=shred_model,
+        train_sim=train_sim,
+        train_real=train_real,
+        epochs=dashred_epochs,
+        patience=dashred_patience,
+        gan_epochs=gan_epochs,
+        smoothness_weight=smoothness_weight,
     )
 
     # Evaluate DA-SHRED
     print("\n[6] Evaluating DA-SHRED...")
     pred_before, truth_real, mse_before = evaluate(shred_model, valid_real, scaler_U)
-    pred_after, _, mse_after = evaluate(dashred_model, valid_real, scaler_U, is_dashred=True)
+    pred_after, _, mse_after = evaluate(
+        dashred_model, valid_real, scaler_U, is_dashred=True
+    )
 
     # Optional: apply post-processing smoothing
     if apply_smoothing:
@@ -868,7 +1012,6 @@ if __name__ == "__main__":
     print(f"    Gap reduction: {(mse_before - mse_after) / mse_before * 100:.1f}%")
     print(f"    Improvement: {mse_before / mse_after:.2f}x")
 
-
     # Reconstruction comparison
 
     print("\n[6b] Generating three-panel reconstruction comparison...")
@@ -879,11 +1022,15 @@ if __name__ == "__main__":
         for sensors, _ in train_loader_real:
             sensors = sensors.to(device)
             pred_train_dashred, _, _ = dashred_model(sensors, apply_transform=True)
-            pred_train_dashred = scaler_U.inverse_transform(pred_train_dashred.cpu().numpy())
+            pred_train_dashred = scaler_U.inverse_transform(
+                pred_train_dashred.cpu().numpy()
+            )
 
     # Optional smoothing for visualization
     if apply_smoothing:
-        pred_train_dashred = spectral_smooth(pred_train_dashred, L, cutoff_fraction=smoothing_cutoff)
+        pred_train_dashred = spectral_smooth(
+            pred_train_dashred, L, cutoff_fraction=smoothing_cutoff
+        )
 
     U_sim_train = U_sim[lags:n_train]
     U_real_train = U_real[lags:n_train]
@@ -894,127 +1041,178 @@ if __name__ == "__main__":
     vmin = min(U_sim_train.min(), U_real_train.min(), pred_train_dashred.min())
     vmax = max(U_sim_train.max(), U_real_train.max(), pred_train_dashred.max())
 
-    im1 = axes[0].imshow(U_sim_train.T, aspect='auto', cmap='RdBu_r',
-                         extent=[t_train[0], t_train[-1], 0, L],
-                         origin='lower', vmin=vmin, vmax=vmax, interpolation='bilinear')
-    axes[0].set_xlabel('Time (t)', fontsize=12)
-    axes[0].set_ylabel('Space (x)', fontsize=12)
-    axes[0].set_title('Simulation (Undamped KS)', fontsize=14)
-    plt.colorbar(im1, ax=axes[0], label='u')
+    im1 = axes[0].imshow(
+        U_sim_train.T,
+        aspect="auto",
+        cmap="RdBu_r",
+        extent=[t_train[0], t_train[-1], 0, L],
+        origin="lower",
+        vmin=vmin,
+        vmax=vmax,
+        interpolation="bilinear",
+    )
+    axes[0].set_xlabel("Time (t)", fontsize=12)
+    axes[0].set_ylabel("Space (x)", fontsize=12)
+    axes[0].set_title("Simulation (Undamped KS)", fontsize=14)
+    plt.colorbar(im1, ax=axes[0], label="u")
 
-    im2 = axes[1].imshow(U_real_train.T, aspect='auto', cmap='RdBu_r',
-                         extent=[t_train[0], t_train[-1], 0, L],
-                         origin='lower', vmin=vmin, vmax=vmax, interpolation='bilinear')
-    axes[1].set_xlabel('Time (t)', fontsize=12)
-    axes[1].set_ylabel('Space (x)', fontsize=12)
-    axes[1].set_title('Real Physics (Damped KS, μ={})'.format(mu_damping), fontsize=14)
-    plt.colorbar(im2, ax=axes[1], label='u')
+    im2 = axes[1].imshow(
+        U_real_train.T,
+        aspect="auto",
+        cmap="RdBu_r",
+        extent=[t_train[0], t_train[-1], 0, L],
+        origin="lower",
+        vmin=vmin,
+        vmax=vmax,
+        interpolation="bilinear",
+    )
+    axes[1].set_xlabel("Time (t)", fontsize=12)
+    axes[1].set_ylabel("Space (x)", fontsize=12)
+    axes[1].set_title("Real Physics (Damped KS, μ={})".format(mu_damping), fontsize=14)
+    plt.colorbar(im2, ax=axes[1], label="u")
 
-    im3 = axes[2].imshow(pred_train_dashred.T, aspect='auto', cmap='RdBu_r',
-                         extent=[t_train[0], t_train[-1], 0, L],
-                         origin='lower', vmin=vmin, vmax=vmax, interpolation='bilinear')
-    axes[2].set_xlabel('Time (t)', fontsize=12)
-    axes[2].set_ylabel('Space (x)', fontsize=12)
-    axes[2].set_title('DA-SHRED Reconstruction', fontsize=14)
-    plt.colorbar(im3, ax=axes[2], label='u')
+    im3 = axes[2].imshow(
+        pred_train_dashred.T,
+        aspect="auto",
+        cmap="RdBu_r",
+        extent=[t_train[0], t_train[-1], 0, L],
+        origin="lower",
+        vmin=vmin,
+        vmax=vmax,
+        interpolation="bilinear",
+    )
+    axes[2].set_xlabel("Time (t)", fontsize=12)
+    axes[2].set_ylabel("Space (x)", fontsize=12)
+    axes[2].set_title("DA-SHRED Reconstruction", fontsize=14)
+    plt.colorbar(im3, ax=axes[2], label="u")
 
     plt.tight_layout()
-    plt.savefig('reconstruction_comparison.png', dpi=150, bbox_inches='tight')
+    plt.savefig("reconstruction_comparison.png", dpi=150, bbox_inches="tight")
     print("    Saved: reconstruction_comparison.png")
     plt.show()
-
 
     # SINDy: Discovery of Missing Physics
 
     print("\n[7] Identifying missing physics with SINDy...")
 
     Xi, feature_names = identify_missing_damping(
-        shred_model, dashred_model, train_sim, train_real, x, L, dt, save_every,
+        shred_model,
+        dashred_model,
+        train_sim,
+        train_real,
+        x,
+        L,
+        dt,
+        save_every,
         initial_threshold=sindy_initial_threshold,
         max_iter=sindy_max_iter,
         refinement_steps=sindy_refinement_steps,
-        threshold_increment=sindy_threshold_increment
+        threshold_increment=sindy_threshold_increment,
     )
 
     # Visualize SINDy coefficients
     fig, ax = plt.subplots(figsize=(10, 6))
-    im = ax.imshow(Xi, cmap='RdBu_r', aspect='auto')
+    im = ax.imshow(Xi, cmap="RdBu_r", aspect="auto")
     ax.set_xticks(range(Xi.shape[1]))
-    ax.set_xticklabels([f'dz{i}' for i in range(Xi.shape[1])])
+    ax.set_xticklabels([f"dz{i}" for i in range(Xi.shape[1])])
     ax.set_yticks(range(len(feature_names)))
     ax.set_yticklabels(feature_names)
-    ax.set_title('SINDy Coefficients for Latent Discrepancy')
-    plt.colorbar(im, ax=ax, label='Coefficient')
+    ax.set_title("SINDy Coefficients for Latent Discrepancy")
+    plt.colorbar(im, ax=ax, label="Coefficient")
     plt.tight_layout()
-    plt.savefig('sindy_coefficients.png', dpi=150)
+    plt.savefig("sindy_coefficients.png", dpi=150)
     plt.show()
-
 
     # Plot final results
 
     print("\n[8] Generating plots...")
 
     fig, axes = plt.subplots(2, 3, figsize=(14, 8))
-    fig.suptitle('Prediction results on unseen sensor data', fontsize=14, y=0.98)
+    fig.suptitle("Prediction results on unseen sensor data", fontsize=14, y=0.98)
 
     scaler_U, _ = train_sim.get_scalers()
     pred_before, _, mse_before = evaluate(shred_model, valid_real, scaler_U)
-    pred_after, truth_real, mse_after = evaluate(dashred_model, valid_real, scaler_U, is_dashred=True)
+    pred_after, truth_real, mse_after = evaluate(
+        dashred_model, valid_real, scaler_U, is_dashred=True
+    )
 
     if apply_smoothing:
         pred_after = spectral_smooth(pred_after, L, cutoff_fraction=smoothing_cutoff)
 
     for i, idx in enumerate([0, len(truth_real) // 2, len(truth_real) - 1]):
-        axes[0, i].plot(x, truth_real[idx], 'b-', lw=2, label='Ground Truth')
-        axes[0, i].plot(x, pred_before[idx], 'r--', lw=1.5, label='SHRED (before DA)')
-        axes[0, i].plot(x, pred_after[idx], 'g--', lw=1.5, label='DA-SHRED')
-        axes[0, i].set_xlabel('x')
-        axes[0, i].set_ylabel('u')
-        axes[0, i].set_title(f'Sample {idx}')
+        axes[0, i].plot(x, truth_real[idx], "b-", lw=2, label="Ground Truth")
+        axes[0, i].plot(x, pred_before[idx], "r--", lw=1.5, label="SHRED (before DA)")
+        axes[0, i].plot(x, pred_after[idx], "g--", lw=1.5, label="DA-SHRED")
+        axes[0, i].set_xlabel("x")
+        axes[0, i].set_ylabel("u")
+        axes[0, i].set_title(f"Sample {idx}")
         axes[0, i].legend(fontsize=8)
         axes[0, i].grid(alpha=0.3)
 
     err_before = np.sqrt(np.mean((pred_before - truth_real) ** 2, axis=1))
     err_after = np.sqrt(np.mean((pred_after - truth_real) ** 2, axis=1))
 
-    axes[1, 0].plot(err_before, 'r-', label='SHRED (before DA)')
-    axes[1, 0].plot(err_after, 'g-', label='DA-SHRED')
-    axes[1, 0].set_xlabel('Time step')
-    axes[1, 0].set_ylabel('RMSE')
-    axes[1, 0].set_title('Reconstruction Error')
+    axes[1, 0].plot(err_before, "r-", label="SHRED (before DA)")
+    axes[1, 0].plot(err_after, "g-", label="DA-SHRED")
+    axes[1, 0].set_xlabel("Time step")
+    axes[1, 0].set_ylabel("RMSE")
+    axes[1, 0].set_title("Reconstruction Error")
     axes[1, 0].legend()
     axes[1, 0].grid(alpha=0.3)
 
-    im = axes[1, 1].imshow(Xi, cmap='RdBu_r', aspect='auto')
-    axes[1, 1].set_xlabel('Latent Dim')
-    axes[1, 1].set_ylabel('Library Feature')
-    axes[1, 1].set_title('SINDy Coefficients (Missing Physics)')
+    im = axes[1, 1].imshow(Xi, cmap="RdBu_r", aspect="auto")
+    axes[1, 1].set_xlabel("Latent Dim")
+    axes[1, 1].set_ylabel("Library Feature")
+    axes[1, 1].set_title("SINDy Coefficients (Missing Physics)")
     plt.colorbar(im, ax=axes[1, 1])
 
-    axes[1, 2].imshow(np.abs(pred_after - truth_real).T, aspect='auto', cmap='hot',
-                      extent=[0, len(truth_real), 0, L])
-    axes[1, 2].set_xlabel('Time')
-    axes[1, 2].set_ylabel('x')
-    axes[1, 2].set_title('DA-SHRED Absolute Error')
+    axes[1, 2].imshow(
+        np.abs(pred_after - truth_real).T,
+        aspect="auto",
+        cmap="hot",
+        extent=[0, len(truth_real), 0, L],
+    )
+    axes[1, 2].set_xlabel("Time")
+    axes[1, 2].set_ylabel("x")
+    axes[1, 2].set_title("DA-SHRED Absolute Error")
 
-    axes[0, 1].annotate('Snapshots (u(x))', xy=(0.5, 1.25), xycoords='axes fraction',
-                        ha='center', va='center', fontsize=12)
-    axes[1, 1].annotate('Error / Coef / Heatmap', xy=(0.5, 1.25), xycoords='axes fraction',
-                        ha='center', va='center', fontsize=12)
+    axes[0, 1].annotate(
+        "Snapshots (u(x))",
+        xy=(0.5, 1.25),
+        xycoords="axes fraction",
+        ha="center",
+        va="center",
+        fontsize=12,
+    )
+    axes[1, 1].annotate(
+        "Error / Coef / Heatmap",
+        xy=(0.5, 1.25),
+        xycoords="axes fraction",
+        ha="center",
+        va="center",
+        fontsize=12,
+    )
 
     plt.tight_layout(rect=[0, 0, 1, 0.95])
 
-    plt.savefig('dashred_results.png', dpi=150, bbox_inches='tight')
+    plt.savefig("dashred_results.png", dpi=150, bbox_inches="tight")
     print("    Saved: dashred_results.png")
     plt.show()
 
     # Save checkpoint
-    torch.save({
-        'shred': shred_model.state_dict(),
-        'dashred': dashred_model.state_dict(),
-        'sensor_indices': sensor_indices,
-        'params': {'num_sensors': num_sensors, 'lags': lags, 'hidden_size': hidden_size}
-    }, 'dashred_checkpoint.pt')
+    torch.save(
+        {
+            "shred": shred_model.state_dict(),
+            "dashred": dashred_model.state_dict(),
+            "sensor_indices": sensor_indices,
+            "params": {
+                "num_sensors": num_sensors,
+                "lags": lags,
+                "hidden_size": hidden_size,
+            },
+        },
+        "dashred_checkpoint.pt",
+    )
     print("    Saved: dashred_checkpoint.pt")
 
     print("\nDone!")
