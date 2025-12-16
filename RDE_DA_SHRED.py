@@ -35,10 +35,9 @@ if __name__ == "__main__":
     # HYPERPARAMETERS - Easy to tune
 
     # PDE parameters
-    L = 32 * np.pi
+    L = 24 * np.pi
     N = 100
     nu = 1.0
-    mu_damping = 0.05  # Missing physics term
     dt = 0.02
     T = 25.0
     save_every = 1
@@ -81,11 +80,9 @@ if __name__ == "__main__":
     print(f"    Simulation: Koch model ")
     print(f"    Real Physics: high fidelity simulation")
 
+    U_sim = np.load("DA_data/Koch_model_processed.npy", allow_pickle=True)
+    U_real = np.load("DA_data/high_fidelity_sim_processed.npy", allow_pickle=True)
 
-
-    U_sim = np.load("DA_data/high_fidelity_sim_processed.npy", allow_pickle=True)
-    U_real = np.load("DA_data/Koch_model_processed.npy", allow_pickle=True)
-    
     # Plot KS heatmap
     t_sim = np.arange(0, T + dt, dt * save_every)
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -99,7 +96,7 @@ if __name__ == "__main__":
     )
     ax.set_xlabel("Time (t)")
     ax.set_ylabel("Space (x)")
-    ax.set_title("1D Kuramoto-Sivashinsky Heatmap (Undamped Simulation)")
+    ax.set_title("Sim data ")
     plt.colorbar(im, ax=ax, label="u value")
     plt.tight_layout()
     plt.savefig("ks_heatmap.png", dpi=150, bbox_inches="tight")
@@ -236,7 +233,7 @@ if __name__ == "__main__":
     )
     axes[0].set_xlabel("Time (t)", fontsize=12)
     axes[0].set_ylabel("Space (x)", fontsize=12)
-    axes[0].set_title("Simulation (Undamped KS)", fontsize=14)
+    axes[0].set_title("Simulation (Koch Model)", fontsize=14)
     plt.colorbar(im1, ax=axes[0], label="u")
 
     im2 = axes[1].imshow(
@@ -251,7 +248,7 @@ if __name__ == "__main__":
     )
     axes[1].set_xlabel("Time (t)", fontsize=12)
     axes[1].set_ylabel("Space (x)", fontsize=12)
-    axes[1].set_title("Real Physics (Damped KS, μ={})".format(mu_damping), fontsize=14)
+    axes[1].set_title("Real Physics (high fidelity sim)", fontsize=14)
     plt.colorbar(im2, ax=axes[1], label="u")
 
     im3 = axes[2].imshow(
