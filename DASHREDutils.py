@@ -230,7 +230,7 @@ class DASHRED(nn.Module):
 class LatentGANAligner(nn.Module):
     """GAN-based aligner to transform sim latent space to real"""
 
-    def __init__(self, latent_dim, hidden_layers=[128, 128], dropout=0.1):
+    def __init__(self, latent_dim, hidden_layers=[128, 128, 128, 128], dropout=0.1):
         super(LatentGANAligner, self).__init__()
         self.latent_dim = latent_dim
 
@@ -452,7 +452,7 @@ def train_dashred(
             # Smoothness regularization: penalize large gradients in reconstruction
             # This encourages smoother outputs
             if smoothness_weight > 0:
-                pred_grad = pred[:, 1:] - pred[:, :-1]  # Approximate spatial gradient
+                pred_grad = pred[:, 1:] - pred[:, :-1]  # Approximate spatial gradient <- 
                 smoothness_loss = torch.mean(pred_grad**2)
             else:
                 smoothness_loss = 0.0

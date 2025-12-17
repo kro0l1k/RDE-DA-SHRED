@@ -40,7 +40,7 @@ if __name__ == "__main__":
     num_sensors = 25
     lags = 25
     num_lstm_layers = 3
-    hidden_size = 5
+    hidden_size = 6
     decoder_layers = [128, 128, 128]
 
     # Training parameters
@@ -75,27 +75,43 @@ if __name__ == "__main__":
     print(f"    Simulation: Koch model ")
     print(f"    Real Physics: high fidelity simulation")
 
+
     U_sim = np.load("DA_data/Koch_model_processed.npy", allow_pickle=True)
     U_real = np.load("DA_data/high_fidelity_sim_processed.npy", allow_pickle=True)
+    
+      
+    class Gaussian_smoorther:
+        def __init__(self, sigma_temporal=1.0, sigma_spatial = 1.0):
+            self.sigma_temporal = sigma_temporal 
+            self.sigma_spatial = sigma_spatial
 
-    # Plot KS heatmap
-    t_sim = np.arange(0, T + dt, dt * save_every)
-    fig, ax = plt.subplots(figsize=(10, 6))
-    im = ax.imshow(
-        U_sim.T,
-        aspect="auto",
-        cmap="RdBu_r",
-        extent=[t_sim[0], t_sim[-1], 0, L],
-        origin="lower",
-        interpolation="bilinear",
-    )
-    ax.set_xlabel("Time (t)")
-    ax.set_ylabel("Space (x)")
-    ax.set_title("Sim data ")
-    plt.colorbar(im, ax=ax, label="u value")
-    plt.tight_layout()
-    plt.savefig("ks_heatmap.png", dpi=150, bbox_inches="tight")
-    plt.show()
+        def smooth(self, data):
+            from scipy.ndimage import gaussian_filter1d
+            smoothed_data = gaussian_filter1d(data, sigma=self.sigma_temporal, axis=0)  
+            smoothed_data = gaussian_filter1d(smoothed_data, sigma=self.sigma_spatial, axis=1)
+            return smoothed_data
+
+    smoother = Gaussian_smoorther(sigma_temporal=.15, sigma_spatial=.7)
+    U_real = smoother.smooth(U_real)
+
+    # # Plot KS heatmap
+    # t_sim = np.arange(0, T + dt, dt * save_every)
+    # fig, ax = plt.subplots(figsize=(10, 6))
+    # im = ax.imshow(
+    #     U_sim.T,
+    #     aspect="auto",
+    #     cmap="RdBu_r",
+    #     extent=[t_sim[0], t_sim[-1], 0, L],
+    #     origin="lower",
+    #     interpolation="bilinear",
+    # )
+    # ax.set_xlabel("Time (t)")
+    # ax.set_ylabel("Space (x)")
+    # ax.set_title("Sim data ")
+    # plt.colorbar(im, ax=ax, label="u value")
+    # plt.tight_layout()
+    # plt.savefig("ks_heatmap.png", dpi=150, bbox_inches="tight")
+    # plt.show()
 
     print(f"    Data shape: {U_sim.shape} (timesteps x spatial points)")
 
