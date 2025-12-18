@@ -39,16 +39,17 @@ if __name__ == "__main__":
     # SHRED/DA-SHRED parameters
     num_sensors = 25
     lags = 25
-    num_lstm_layers = 3
-    hidden_size = 6
-    decoder_layers = [128, 128, 128]
+    num_lstm_layers = 2
+    hidden_size = 8
+    decoder_layers = [28, 185]
+    P = 50  # Number of basis functions in DeepONet decoder
 
     # Training parameters
     shred_epochs = 550
-    shred_patience = 100
+    shred_patience = 200
     dashred_epochs = 650
     dashred_patience = 100
-    gan_epochs = 300
+    gan_epochs = 700
     smoothness_weight = 0.0  # Weight for smoothness regularization (try 0.0 to 0.2)
 
     # SINDy refinement parameters
@@ -94,24 +95,6 @@ if __name__ == "__main__":
     smoother = Gaussian_smoorther(sigma_temporal=.15, sigma_spatial=.7)
     U_real = smoother.smooth(U_real)
 
-    # # Plot KS heatmap
-    # t_sim = np.arange(0, T + dt, dt * save_every)
-    # fig, ax = plt.subplots(figsize=(10, 6))
-    # im = ax.imshow(
-    #     U_sim.T,
-    #     aspect="auto",
-    #     cmap="RdBu_r",
-    #     extent=[t_sim[0], t_sim[-1], 0, L],
-    #     origin="lower",
-    #     interpolation="bilinear",
-    # )
-    # ax.set_xlabel("Time (t)")
-    # ax.set_ylabel("Space (x)")
-    # ax.set_title("Sim data ")
-    # plt.colorbar(im, ax=ax, label="u value")
-    # plt.tight_layout()
-    # plt.savefig("ks_heatmap.png", dpi=150, bbox_inches="tight")
-    # plt.show()
 
     print(f"    Data shape: {U_sim.shape} (timesteps x spatial points)")
 
@@ -148,7 +131,10 @@ if __name__ == "__main__":
         output_size=N,
         num_lstm_layers=num_lstm_layers,
         decoder_layers=decoder_layers,
-        dropout=0.15,
+        dropout=0.25,
+        use_deeponet=True,
+        trunk_query_points=x,
+        P = P,
     )
     print(f"    Model parameters: {sum(p.numel() for p in shred_model.parameters()):,}")
 
@@ -169,6 +155,7 @@ if __name__ == "__main__":
     # Initiate and train DASHRED
     dashred_model = DASHRED(shred_model, freeze_decoder=False)
 
+    
     print("\n[5] Training DA-SHRED to close SIM2REAL gap...")
     train_hist_da, valid_hist_da = train_dashred(
         dashred_model,

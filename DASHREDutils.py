@@ -8,6 +8,8 @@ from sklearn.preprocessing import MinMaxScaler
 import copy
 import warnings
 
+from DeepONet import DeepONet
+
 warnings.filterwarnings('ignore')
 
 # Set device
@@ -21,80 +23,9 @@ device = torch.device(
 print(f"Using device: {device}")
 
 
-# 1. PDE Solver: 1D Kuramoto-Sivashinsky Equation
-
-class KuramotoSivashinsky1D:
-    """
-    1D Kuramoto-Sivashinsky equation solver using pseudo-spectral ETDRK4.
-
-    Simulation: u_t + u*u_x + u_xx + nu*u_xxxx = 0
-    Real physics: u_t + u*u_x + u_xx + nu*u_xxxx + mu*u = 0 (with damping)
-    """
-
-    def __init__(self, L=24 * np.pi, N=256, nu=1.0, mu=0.0, dt=0.25):
-        self.L, self.N, self.nu, self.mu, self.dt = L, N, nu, mu, dt
-        self.x = np.linspace(0, L, N, endpoint=False)
-        self.k = (
-            2
-            * np.pi
-            / L
-            * np.concatenate([np.arange(0, N // 2), np.arange(-N // 2, 0)])
-        )
-        self.linear_op = self.k**2 - nu * self.k**4 - mu
-        self._compute_etdrk4_coefficients()
-
-    def _compute_etdrk4_coefficients(self):
-        h, L = self.dt, self.linear_op
-        self.E = np.exp(h * L)
-        self.E2 = np.exp(h * L / 2)
-
-        M = 32
-        r = np.exp(1j * np.pi * (np.arange(1, M + 1) - 0.5) / M)
-        LR = h * L[:, np.newaxis] + r[np.newaxis, :]
-
-        self.Q = h * np.real(np.mean((np.exp(LR / 2) - 1) / LR, axis=1))
-        self.f1 = h * np.real(
-            np.mean((-4 - LR + np.exp(LR) * (4 - 3 * LR + LR**2)) / LR**3, axis=1)
-        )
-        self.f2 = h * np.real(
-            np.mean((2 + LR + np.exp(LR) * (-2 + LR)) / LR**3, axis=1)
-        )
-        self.f3 = h * np.real(
-            np.mean((-4 - 3 * LR - LR**2 + np.exp(LR) * (4 - LR)) / LR**3, axis=1)
-        )
-
-    def _nonlinear(self, u_hat):
-        u = np.real(ifft(u_hat))
-        return -0.5j * self.k * fft(u**2)
-
-    def step(self, u_hat):
-        Nu = self._nonlinear(u_hat)
-        a = self.E2 * u_hat + self.Q * Nu
-        Na = self._nonlinear(a)
-        b = self.E2 * u_hat + self.Q * Na
-        Nb = self._nonlinear(b)
-        c = self.E2 * a + self.Q * (2 * Nb - Nu)
-        Nc = self._nonlinear(c)
-        return self.E * u_hat + self.f1 * Nu + 2 * self.f2 * (Na + Nb) + self.f3 * Nc
-
-    def simulate(self, u0, T, save_every=1):
-        n_steps = int(T / self.dt)
-        n_save = n_steps // save_every + 1
-        U = np.zeros((n_save, self.N))
-        u_hat = fft(u0)
-        U[0] = u0
-        idx = 1
-        for step in range(1, n_steps + 1):
-            u_hat = self.step(u_hat)
-            if step % save_every == 0 and idx < n_save:
-                U[idx] = np.real(ifft(u_hat))
-                idx += 1
-        return U
 
 
 # 2. Dataset for SHRED
-
-
 class TimeSeriesDataset(Dataset):
     """Dataset with time-lagged sensor measurements for SHRED"""
 
@@ -136,8 +67,6 @@ class TimeSeriesDataset(Dataset):
 
 
 # 3. SHRED Model
-
-
 class SHRED(nn.Module):
     """SHallow REcurrent Decoder: LSTM encoder -> latent -> MLP decoder"""
 
@@ -150,6 +79,9 @@ class SHRED(nn.Module):
         num_lstm_layers=3,
         decoder_layers=[256, 256],
         dropout=0.1,
+        use_deeponet = False, 
+        trunk_query_points = None,
+        P = 50
     ):
         super().__init__()
         self.hidden_size = hidden_size
@@ -161,21 +93,50 @@ class SHRED(nn.Module):
             batch_first=True,
             dropout=dropout if num_lstm_layers > 1 else 0,
         )
+        self.batch_norm = nn.LayerNorm(hidden_size)
+        self.use_deeponet = use_deeponet
+        # Decoder Model (MLP)
+        if self.use_deeponet == False:
+            layers = []
+            prev = hidden_size
+            for size in decoder_layers:
+                layers.extend(
+                    [
+                        nn.Linear(prev, size),
+                        nn.LayerNorm(size),
+                        nn.ReLU(),
+                        nn.Dropout(dropout),
+                    ]
+                )
+                prev = size
+            layers.append(nn.Linear(prev, output_size))
+            self.decoder = nn.Sequential(*layers)
+        else:
+            if trunk_query_points is None:
+                raise ValueError("trunk_query_points must be provided when use_deeponet is True")
+            
+            # Convert trunk_query_points to tensor if it's numpy
+            if isinstance(trunk_query_points, np.ndarray):
+                self.trunk_inputs = torch.tensor(trunk_query_points, dtype=torch.float32).to(device)
+            else:
+                self.trunk_inputs = trunk_query_points.to(device)
+            
+            if self.trunk_inputs.dim() == 1:
+                self.trunk_inputs = self.trunk_inputs.unsqueeze(1) # [N, 1]
+            
+            trunk_dim = self.trunk_inputs.shape[1]
 
-        layers = []
-        prev = hidden_size
-        for size in decoder_layers:
-            layers.extend(
-                [
-                    nn.Linear(prev, size),
-                    nn.LayerNorm(size),
-                    nn.ReLU(),
-                    nn.Dropout(dropout),
-                ]
-            )
-            prev = size
-        layers.append(nn.Linear(prev, output_size))
-        self.decoder = nn.Sequential(*layers)
+            print("DON architecture selected")
+            self.decoder =  DeepONet(
+                branch_input_dim=hidden_size,
+                trunk_input_dim=trunk_dim,
+                p=P,
+                branch_channels=decoder_layers,
+                trunk_hidden_dim=decoder_layers[0],
+                default_trunk_input=self.trunk_inputs
+            ).to(device)
+            
+            
 
     def encode(self, x):
         _, (h_n, _) = self.lstm(x)
@@ -183,7 +144,13 @@ class SHRED(nn.Module):
 
     def forward(self, x):
         latent = self.encode(x)
-        return self.decoder(latent), latent
+        latent =  self.batch_norm(latent)   
+        if self.use_deeponet:
+            branch_inputs = latent
+            output = self.decoder( branch_inputs,  self.trunk_inputs)
+            return output, latent
+        else:
+            return self.decoder(latent), latent
 
 
 # 4. DA-SHRED Model
@@ -330,7 +297,7 @@ def train_latent_gan_aligner(
 
 
 def train_shred(
-    model, train_data, valid_data, epochs=150, batch_size=32, lr=1e-3, patience=20
+    model, train_data, valid_data, epochs=150, batch_size=32, lr=2e-3, patience=20
 ):
     """Train SHRED model"""
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
@@ -401,7 +368,7 @@ def train_dashred(
     train_real,
     epochs=100,
     batch_size=32,
-    lr=5e-4,
+    lr=5e-3,
     patience=20,
     gan_epochs=50,
     smoothness_weight=0.1,
