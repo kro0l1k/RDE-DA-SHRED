@@ -38,7 +38,7 @@ if __name__ == "__main__":
 
     # SHRED/DA-SHRED parameters
     num_sensors = 25
-    lags = 25
+    lags = 5
     num_lstm_layers = 2
     hidden_size = 8
     decoder_layers = [28, 185]

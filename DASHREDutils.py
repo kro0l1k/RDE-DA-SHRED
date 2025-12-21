@@ -144,7 +144,7 @@ class SHRED(nn.Module):
 
     def forward(self, x):
         latent = self.encode(x)
-        latent =  self.batch_norm(latent)   
+        latent =  self.batch_norm(latent) # added batch norm to help with the amplitude    
         if self.use_deeponet:
             branch_inputs = latent
             output = self.decoder( branch_inputs,  self.trunk_inputs)
