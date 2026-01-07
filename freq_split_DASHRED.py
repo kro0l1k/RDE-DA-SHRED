@@ -981,7 +981,7 @@ if __name__ == "__main__":
     plt.savefig('sparse_freq_RDE_results_validation.png', dpi=150, bbox_inches='tight')
     print("    Saved: sparse_freq_RDE_results_validation.png")
     plt.close(fig_valid_detail)
-
+    
     # === FOUR-PANEL COMPARISON ON FULL DATASET ===
     # Run model on full real data for better visualization
     print(f"    Running model on full dataset for visualization...")
@@ -1152,6 +1152,23 @@ if __name__ == "__main__":
     plt.tight_layout()
     plt.savefig('sparse_freq_RDE_results.png', dpi=150, bbox_inches='tight')
     print("    Saved: sparse_freq_RDE_results.png")
+      # save data for all eight subplots 
+    np.savez('sparse_freq_RDE_results_validation_data.npz',
+             U_real_full=U_real_full,
+             idx_valid=idx_valid,
+             U_sim_full=U_sim_full,
+             U_real_valid=U_real_valid,
+             results_lf_only=results['lf_only'],
+             results_lf_hf=results['lf_hf'],
+             hf_true_valid=hf_true_valid,
+             hf_pred_valid=hf_pred_valid,
+             hf_pred_fft_valid=hf_pred_fft_valid,
+             history_sensor_loss=np.array(history['sensor_loss']),
+             history_sparsity_loss=np.array(history['sparsity_loss']),
+             error_valid=error_valid)
+    
+    print(" --> saved data for validation plots to sparse_freq_RDE_results_validation_data.npz")
+
 
     # === ATTENTION WEIGHTS VISUALIZATION ===
     if dashred.hf_shred.use_lag_attention:
@@ -1187,3 +1204,12 @@ if __name__ == "__main__":
     print("\nDone!")
     
     print( " additional step: the 1d -> 3d reconstruction ")
+    print(" we do this in a separate notebook for clarity - saving the 1d reconstutions:")
+    np.savez('RDE_1d_reconstructions.npz',
+             U_sim=U_sim,
+             U_real=U_real,
+             lf_only=full_results['lf_only'],
+             lf_hf=full_results['lf_hf'])
+    print("Saved: RDE_1d_reconstructions.npz")
+    
+    
