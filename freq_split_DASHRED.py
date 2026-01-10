@@ -1083,7 +1083,7 @@ if __name__ == "__main__":
 
     idx = n_full // 2  # Middle timestep
     x = np.arange(N)
-
+    ##### eight by eight plot 
     # Row 1: Spatial reconstructions
     axes[0, 0].plot(x, U_real_full[idx], 'b-', lw=2, label='Ground Truth')
     axes[0, 0].plot(x, full_results['lf_only'][idx], 'r--', lw=1.5, label='LF only')
@@ -1124,7 +1124,7 @@ if __name__ == "__main__":
     axes[1, 0].legend()
     axes[1, 0].grid(alpha=0.3)
 
-    # Heatmaps with proper time axis
+    # Heatmaps with proper time axis # to rotate
     im1 = axes[1, 1].imshow(U_real_full.T, aspect='auto', cmap='RdBu_r',
                             origin='lower', vmin=vmin, vmax=vmax, extent=extent)
     axes[1, 1].set_title('Ground Truth (Real Physics)')
@@ -1154,6 +1154,8 @@ if __name__ == "__main__":
     print("    Saved: sparse_freq_RDE_results.png")
       # save data for all eight subplots 
     np.savez('sparse_freq_RDE_results_validation_data.npz',
+             x = x,
+             n_full = n_full,
              U_real_full=U_real_full,
              idx_valid=idx_valid,
              U_sim_full=U_sim_full,
@@ -1165,7 +1167,20 @@ if __name__ == "__main__":
              hf_pred_fft_valid=hf_pred_fft_valid,
              history_sensor_loss=np.array(history['sensor_loss']),
              history_sparsity_loss=np.array(history['sparsity_loss']),
-             error_valid=error_valid)
+             error_valid=error_valid,
+             dataset_to_rotate1 = U_real_full.T,
+             dataset_to_rotate2 = full_results['lf_hf'].T,
+             full_results = full_results,
+             fft_mag = fft_mag,
+             freqs = freqs,
+             num_sensors = num_sensors,
+             history = history,
+             rmse_lf_full = rmse_lf_full,
+             rmse_total_full = rmse_total_full,
+             vmin = vmin,
+             vmax = vmax,
+             extent = extent
+             )
     
     print(" --> saved data for validation plots to sparse_freq_RDE_results_validation_data.npz")
 
