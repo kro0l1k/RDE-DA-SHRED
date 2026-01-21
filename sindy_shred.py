@@ -194,7 +194,7 @@ class SINDy_SHRED(torch.nn.Module):
         self.e_sindy.thresholding(threshold)
             
 
-def fit(model, train_dataset, valid_dataset, batch_size=64, num_epochs=4000, lr=1e-3, sindy_regularization=1.0, mean_zero_regularization = 0.5, variance_regularization = 0.5, optimizer="AdamW", verbose=False, threshold=0.5, base_threshold=0.0, patience=20, thres_epoch=100, weight_decay=0.01):
+def fit(model, train_dataset, valid_dataset, batch_size=64, num_epochs=4000, lr=1e-3, sindy_regularization=1.0, mean_zero_regularization = 0.5, variance_regularization = 0.5, background_regularization = 0.5, optimizer="AdamW", verbose=False, threshold=0.5, base_threshold=0.0, patience=20, thres_epoch=100, weight_decay=0.01):
     train_loader = DataLoader(train_dataset, shuffle=True, batch_size=batch_size) # shufffle should be false!!
     criterion = torch.nn.MSELoss()
     # Attempt to compile the model with torch.compile (PyTorch 2.0+).
@@ -210,9 +210,10 @@ def fit(model, train_dataset, valid_dataset, batch_size=64, num_epochs=4000, lr=
         for data in train_loader:
             model.train()
             outputs, h_gru, h_sindy = model(data[0], sindy=True)
+            # print(" shapes in training loop - outputs, h_gru, h_sindy: ", outputs.shape, h_gru.shape, h_sindy.shape)
             optimizer.zero_grad()
             # print("Output shape:", outputs.shape, " Target shape:", data[1].shape)
-            loss = criterion(outputs, data[1]) + criterion(h_gru, h_sindy) * sindy_regularization  + torch.abs(torch.mean(h_gru)) * mean_zero_regularization + torch.var(h_gru) * variance_regularization
+            loss = criterion(outputs, data[1]) + criterion(h_gru, h_sindy) * sindy_regularization  + torch.abs(torch.mean(h_gru)) * mean_zero_regularization + torch.var(h_gru) * variance_regularization + background_regularization * torch.norm(h_gru[1:, :, 0] - h_gru[:-1, :, 0])
             loss.backward()
             optimizer.step()
         print(epoch, ":", loss)
