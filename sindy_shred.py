@@ -91,7 +91,7 @@ class SINDy_SHRED(torch.nn.Module):
         self.dt = dt
         self.use_layer_norm = use_layer_norm
 
-        # self.layer_norm = torch.nn.LayerNorm(hidden_size).to(self.device)
+        self.layer_norm = torch.nn.LayerNorm(hidden_size).to(self.device)
         self.batch_norm = torch.nn.BatchNorm1d(hidden_size).to(self.device)
         self.to(device)
         self.use_DON = use_DON
