@@ -7,4 +7,4 @@ pandas
 jupyter
 notebook
 clawpack
-skimage
+scikit-image

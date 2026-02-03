@@ -8,6 +8,7 @@ from sklearn.preprocessing import MinMaxScaler
 import matplotlib.pyplot as plt
 import copy
 import os
+import time
 from skimage.metrics import structural_similarity as ssim
 
 
@@ -15,6 +16,7 @@ np.random.seed(42)
 torch.manual_seed(42)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# device = torch.device("mps" if torch.backends.mps.is_available() else device)  # For Apple Silicon Macs
 print(f"Using device: {device}")
 
 
@@ -687,8 +689,17 @@ if __name__ == "__main__":
 
     # Stage 1: Train LF-SHRED on simulation
     print("\n[3] Stage 1: Train LF-SHRED on simulation...")
+    
+    # start timing here
+    start_time = time.time()
+
     lf_shred = SHRED(num_sensors, lags, hidden_size, N).to(device)
     lf_shred = train_lf_shred(lf_shred, train_loader_sim, epochs=300)
+
+    # params of lf_shred
+    total_params_lf = sum(p.numel() for p in lf_shred.parameters())
+    trainable_params_lf = sum(p.numel() for p in lf_shred.parameters() if p.requires_grad)
+    print(f"\n[Summary of params] Total parameters in LF-SHRED: {total_params_lf}, Trainable parameters: {trainable_params_lf}")
 
     # Evaluate LF-SHRED baseline
     lf_shred.eval()
@@ -703,6 +714,8 @@ if __name__ == "__main__":
         baseline_rmse = np.sqrt(np.mean((preds - targets_np) ** 2))
     print(f"    LF-SHRED baseline RMSE on real: {baseline_rmse:.6f}")
 
+    time_to_train_lf = time.time() - start_time
+    print(f"    Time to train LF-SHRED: {time_to_train_lf:.2f} seconds ({time_to_train_lf/60:.2f} minutes)")
     # Create DA-SHRED
     print("\n[4] Creating SparseFreq DA-SHRED...")
     dashred = SparseFreqDASHRED(lf_shred, num_sensors, lags, hidden_size, N, sensor_indices).to(device)
@@ -726,6 +739,9 @@ if __name__ == "__main__":
 
     print("\n[6] Stage 2: Train GAN...")
     train_gan(dashred, Z_sim, Z_real, epochs=400)
+    time_to_train_gan = time.time() - start_time - time_to_train_lf
+    print(f"    Time to train GAN: {time_to_train_gan:.2f} seconds ({time_to_train_gan/60:.2f} minutes)")
+    
 
     # Diagnostic: Check sensor residual
     print("\n[6.5] DIAGNOSTIC: Checking sensor residual...")
@@ -753,6 +769,9 @@ if __name__ == "__main__":
         print(f"    Sensor residual mean abs: {sensors_residual.abs().mean():.6f}")
         print(f"    Full residual mean abs: {full_residual.abs().mean():.6f}")
 
+    elapsed_time = time.time() - start_time
+    print(f"\n[Timing] before HF training completed in {elapsed_time:.2f} seconds ({elapsed_time/60:.2f} minutes)")
+
     # Stage 3: Train HF with sparsity
     print(f"\n[7] Stage 3: Train HF-SHRED with {sparsity_type} sparsity...")
     dashred, history = train_hf_sparse(
@@ -768,6 +787,13 @@ if __name__ == "__main__":
         epochs=200, lambda_sparse=lambda_sparse * 0.1, sparsity_type=sparsity_type,
         stage_name="Stage 4 (Fine-tune)"
     )
+    
+    # print a summary of the number of parameters
+    total_params = sum(p.numel() for p in dashred.parameters())
+    trainable_params = sum(p.numel() for p in dashred.parameters() if p.requires_grad)
+    print(f"\n[Summary] Total parameters in DA-SHRED: {total_params}, Trainable parameters: {trainable_params}")
+    time_to_train_hf = time.time() - start_time - time_to_train_lf - time_to_train_gan
+    print(f"    Time to train HF-SHRED: {time_to_train_hf:.2f} seconds ({time_to_train_hf/60:.2f} minutes)")
 
     # Evaluate
     print("\n[8] Evaluating...")
@@ -792,11 +818,6 @@ if __name__ == "__main__":
     for k in results:
         results[k] = scaler_U.inverse_transform(torch.cat(results[k]).numpy())
 
-    # Debug: Print shapes
-    print(f"\n  DEBUG: results['lf_hf'] shape: {results['lf_hf'].shape}")
-    print(f"  DEBUG: U_real shape: {U_real.shape}, U_sim shape: {U_sim.shape}")
-    print(f"  DEBUG: n_train: {n_train}, lags: {lags}")
-
     # The validation dataset starts at index n_train in the SCALED data
     # But the TimeSeriesDataset only returns samples starting from index `lags`
     # So valid_real contains samples from indices [n_train + lags, len(U_real)]
@@ -812,18 +833,13 @@ if __name__ == "__main__":
     n_valid_samples = len(valid_real)  # Number of samples in validation set
     valid_end_idx = valid_start_idx + n_valid_samples
 
-    print(
-        f"  DEBUG: valid_start_idx: {valid_start_idx}, valid_end_idx: {valid_end_idx}, n_valid_samples: {n_valid_samples}")
 
     # Get original unscaled data for the SAME time window
     U_real_valid = U_real[valid_start_idx:valid_end_idx]
     U_sim_valid = U_sim[valid_start_idx:valid_end_idx]
 
-    print(f"  DEBUG: U_real_valid shape: {U_real_valid.shape}, U_sim_valid shape: {U_sim_valid.shape}")
-
     # Make sure shapes match
     min_len = min(len(results['lf_hf']), len(U_real_valid))
-    print(f"  DEBUG: min_len: {min_len}")
 
     results['lf_hf'] = results['lf_hf'][:min_len]
     results['lf_only'] = results['lf_only'][:min_len]

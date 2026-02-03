@@ -30,6 +30,8 @@ The `Koch_model_data_generation/` subdirectory contains utilities for generating
 - **`rde1d_3_waves.py`** - RDE simulation with 3-wave configuration
 - **`how_to_generate_data.md`** - Instructions for generating new simulation data
 
+the output of `rde1d_3_waves.py` should be a 'Kochs_model_dataset.npy' file which weights over 160MB (hence it is not attached to the submission). It is preprocessed in the first cells of the `baselines_for_results.ipynb` notebook, so running the notebook first is recommended. Alternatively, the preprocessed datasets from both high fidelity and low fidelity simulations are attached and can be found in **`high_fidelity_sim_processed.npy`**, **`Koch_model_processed.npy`** and used for baselines and the Cheap2Rich model.
+
 ## Getting Started
 
 1. Install dependencies:

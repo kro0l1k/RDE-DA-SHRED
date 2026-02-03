@@ -55,7 +55,7 @@ from DeepONet import DeepONet
 from ShiftDeepOnet_single_basis import ShiftDeepONet
 
 class SINDy_SHRED(torch.nn.Module):
-    def __init__(self, input_size, output_size, hidden_size=64, hidden_layers=1, l1=350, l2=400, dropout=0.0, library_dim=10, poly_order=3, include_sine=False, dt=0.03, device='cpu', use_layer_norm=False, use_DON=False, use_SDON = False, nx = None, ny = None, P =50):
+    def __init__(self, input_size, output_size, hidden_size=64, hidden_layers=1, l1=350, l2=400, dropout=0.0, library_dim=10, poly_order=3, include_sine=False, dt=0.03, device='cpu', use_layer_norm=True, use_DON=False, use_SDON = False, nx = None, ny = None, P =50):
         # hidden size is the latent dimension
         
         # Robustly handle scalar or (Nx, Ny) output_size
@@ -91,7 +91,8 @@ class SINDy_SHRED(torch.nn.Module):
         self.dt = dt
         self.use_layer_norm = use_layer_norm
 
-        self.layer_norm = torch.nn.LayerNorm(hidden_size).to(self.device)
+        # self.layer_norm = torch.nn.LayerNorm(hidden_size).to(self.device)
+        self.batch_norm = torch.nn.BatchNorm1d(hidden_size).to(self.device)
         self.to(device)
         self.use_DON = use_DON
         
@@ -143,10 +144,16 @@ class SINDy_SHRED(torch.nn.Module):
             out = self.layer_norm(out)
             # Normalize the final hidden state from last layer
             h_last = self.layer_norm(h_out[-1])
+            # out = self.batch_norm(out.reshape(-1, self.hidden_size)).view(out.shape)
+            # h_last = self.batch_norm(h_out[-1])
+            
         else:
-            h_last = h_out[-1]
+            h_last = h_out[-1].view(-1, self.hidden_size)
 
         h_out = h_last.view(-1, self.hidden_size)
+        
+        # Apply tanh to constrain outputs to [-1, 1]
+        h_out = torch.tanh(h_out)
         # print("GRU output shape: - what we pass to the MLP", h_out.shape)
         if self.use_DON:
             # print("Using DON architecture")
@@ -157,11 +164,11 @@ class SINDy_SHRED(torch.nn.Module):
         else:
             output = self.linear1(h_out)
             output = self.dropout(output)
-            output = torch.nn.functional.relu(output)
+            output = torch.nn.functional.tanh(output)
 
             output = self.linear2(output)
             output = self.dropout(output)
-            output = torch.nn.functional.relu(output)
+            output = torch.nn.functional.tanh(output)
         
             output = self.linear3(output)
             # print("Final output shape:", output.shape )
@@ -194,14 +201,15 @@ class SINDy_SHRED(torch.nn.Module):
         self.e_sindy.thresholding(threshold)
             
 
-def fit(model, train_dataset, valid_dataset, batch_size=64, num_epochs=4000, lr=1e-3, sindy_regularization=1.0, mean_zero_regularization = 0.5, variance_regularization = 0.5, background_regularization = 0.5, optimizer="AdamW", verbose=False, threshold=0.5, base_threshold=0.0, patience=20, thres_epoch=100, weight_decay=0.01):
+def fit(model, train_dataset, valid_dataset, batch_size=64, num_epochs=4000, lr=1e-3, sindy_regularization=0.0, mean_zero_regularization = 0.00, variance_regularization = 0.00, background_regularization = 0.00, optimizer="AdamW", verbose=False, threshold=0.5, base_threshold=0.0, patience=20, thres_epoch=100, weight_decay=0.01):
     train_loader = DataLoader(train_dataset, shuffle=True, batch_size=batch_size) # shufffle should be false!!
     criterion = torch.nn.MSELoss()
     # Attempt to compile the model with torch.compile (PyTorch 2.0+).
     # Compile before creating the optimizer so the optimizer binds to the compiled model's parameters.
-    model = torch.compile(model)
+    # model = torch.compile(model)
+    
     if optimizer == "AdamW":
-        optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     
     val_error_list = []
     patience_counter = 0
