@@ -201,7 +201,7 @@ class SINDy_SHRED(torch.nn.Module):
         self.e_sindy.thresholding(threshold)
             
 
-def fit(model, train_dataset, valid_dataset, batch_size=64, num_epochs=4000, lr=1e-3, sindy_regularization=0.0, mean_zero_regularization = 0.00, variance_regularization = 0.00, background_regularization = 0.00, optimizer="AdamW", verbose=False, threshold=0.5, base_threshold=0.0, patience=20, thres_epoch=100, weight_decay=0.01):
+def fit(model, train_dataset, valid_dataset, batch_size=64, num_epochs=4000, lr=1e-3, sindy_regularization=0.0, mean_zero_regularization = 0.001, variance_regularization = 0.00, background_regularization = 0.00, optimizer="AdamW", verbose=False, threshold=0.5, base_threshold=0.0, patience=20, thres_epoch=100, weight_decay=0.01):
     train_loader = DataLoader(train_dataset, shuffle=True, batch_size=batch_size) # shufffle should be false!!
     criterion = torch.nn.MSELoss()
     # Attempt to compile the model with torch.compile (PyTorch 2.0+).
