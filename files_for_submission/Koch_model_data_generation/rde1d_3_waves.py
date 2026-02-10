@@ -459,8 +459,13 @@ def plot_three_fields():
     t_data_array = np.array(T_data)
     print("saving temperature field data. shape of the matrix: ",
           t_data_array.shape)
-    np.save(os.path.join(run_dir, 'Kochs_model_dataset.npy'), T_data)
+    # save only temperature field data 
+    # np.save(os.path.join(run_dir, 'Kochs_model_dataset.npy'), T_data)
 
+    # save the 3 fields of interest as a numpy array with shape (num_times, num_x, 3)
+    all_fields_data = np.stack((u_data, P_data, T_data, rho_data, z_data), axis=-1)
+    print("saving three fields data. shape of the matrix: ", all_fields_data.shape)
+    np.save(os.path.join(run_dir, 'Kochs_model_dataset.npy'), all_fields_data)
     # get the last 4 fields
     final_state = claw.frames[-1].state
     rho, u, P, T, z = getPrimitive(final_state.q, final_state)
